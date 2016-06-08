@@ -70,7 +70,7 @@ func scan_hosts_on(subnet string, verbose bool) (error, io.Reader) {
 	out, err := result.Output()
 
 	if err != nil {
-		return fmt.Errorf("Not executed. Is nmap installed?"), nil
+		return fmt.Errorf("Execute failed, is nmap installed?"), nil
 	}
 
 	return nil, bytes.NewReader(out)
@@ -146,7 +146,7 @@ func main() {
 	}
 
 	if subnet == "" {
-		fmt.Errorf("You must provide a subnet to scan")
+		fmt.Println("Error: You must provide a subnet to scan.")
 		os.Exit(2)
 	}
 
@@ -158,7 +158,8 @@ func main() {
 
 	ip,net,err := net.ParseCIDR(subnet)
 	if err != nil {
-		fmt.Errorf("You have not input a valid CIDR notation subnet. Try again.")
+		fmt.Println("You have not input a valid CIDR notation subnet. Try again.")
+		fmt.Println("Error: " + err.Error())
 		os.Exit(3)
 	}
 
@@ -169,14 +170,15 @@ func main() {
 
 	err, reader := scan_hosts_on(subnet, *verbose)
 	if err != nil {
-		fmt.Errorf("Host scan failed")
-		fmt.Errorf("Error: " + err.Error())
+		fmt.Println("Host scan failed.")
+		fmt.Println("Error: " + err.Error())
 		os.Exit(4)
 	}
 
 	err, hosts := parse_xml(reader)
 	if err != nil {
-		fmt.Errorf("Parsing failed. Bye")
+		fmt.Println("Parsing failed. Bye")
+		fmt.Println("Error: " + err.Error())
 		os.Exit(5)
 	}
 
@@ -196,7 +198,8 @@ func main() {
 		b, err := json.Marshal(hosts)
 
 		if err != nil {
-			fmt.Errorf("Failed to convert to JSON")
+			fmt.Println("Failed to convert to JSON.")
+			fmt.Println("Error: " + err.Error())
 			os.Exit(6)
 		}
 		fmt.Println(string(b))
