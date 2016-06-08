@@ -12,8 +12,24 @@ import (
 	"net"
 )
 
-type xml_root struct {
+type finished_stats struct {
+	Time int64 `xml:"time,attr"`
+	TimeString string `xml:"timestr,attr"`
+	Elapsed float32 `xml:"elapsed,attr"`
+	Summary string `xml:"summary,attr"`
+	Exit string `xml:"exit,attr"`
+}
+
+type count_stats struct {
+	UpCount int `xml:"up,attr"`
+	DownCount int `xml:"down,attr"`
+	Total int `xml:"total,attr"`
+}
+
+type xml_hosts struct {
 	Hosts []xml_host `xml:"host"`
+	Runstats finished_stats `xml:"runstats>finished"`
+	Hoststats count_stats `xml:"runstats>hosts"`
 }
 
 type xml_addr struct {
@@ -61,12 +77,13 @@ func scan_hosts_on(subnet string, verbose bool) (error, io.Reader) {
 }
 
 func parse_xml(reader io.Reader) (err error, hosts []Host) {
-	output := xml_root{}
+	output := xml_hosts{}
 
 	decoder := xml.NewDecoder(reader)
 	dec_err := decoder.Decode(&output)
 	if dec_err != nil {
 		fmt.Errorf("Decode error")
+		fmt.Errorf("Error: " + dec_err.Error())
 		return dec_err, hosts
 	}
 
@@ -88,10 +105,6 @@ func parse_xml(reader io.Reader) (err error, hosts []Host) {
 		if h.Ip != "" {
 			if h.Hostname == "" {
 				h.Hostname = "unknown"
-			}
-
-			if h.Mac == "" {
-				h.Mac = "(root required)"
 			}
 
 			hosts = append(hosts,h)
@@ -171,7 +184,9 @@ func main() {
 		for index,host := range hosts {
 			fmt.Println(host.Hostname)
 			fmt.Println(host.Ip)
-			fmt.Println(host.Mac)
+			if host.Mac != "" {
+				fmt.Println(host.Mac)
+			}
 			if index < len(hosts) {
 				fmt.Println("")
 			}
