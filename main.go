@@ -1,137 +1,137 @@
 package main
 
 import (
-	"os"
-	"os/exec"
+	"bytes"
+	"encoding/json"
+	"encoding/xml"
+	"flag"
 	"fmt"
 	"io"
-	"encoding/xml"
-	"encoding/json"
-	"bytes"
-	"flag"
 	"net"
+	"os"
+	"os/exec"
 )
 
-type finished_stats struct {
-	Time int64 `xml:"time,attr"`
-	TimeString string `xml:"timestr,attr"`
-	Elapsed float32 `xml:"elapsed,attr"`
-	Summary string `xml:"summary,attr"`
-	Exit string `xml:"exit,attr"`
+type finishedStats struct {
+	Time       int64   `xml:"time,attr"`
+	TimeString string  `xml:"timestr,attr"`
+	Elapsed    float32 `xml:"elapsed,attr"`
+	Summary    string  `xml:"summary,attr"`
+	Exit       string  `xml:"exit,attr"`
 }
 
-type count_stats struct {
-	UpCount int `xml:"up,attr"`
+type countStats struct {
+	UpCount   int `xml:"up,attr"`
 	DownCount int `xml:"down,attr"`
-	Total int `xml:"total,attr"`
+	Total     int `xml:"total,attr"`
 }
 
-type xml_hosts struct {
-	Hosts []xml_host `xml:"host"`
-	Runstats finished_stats `xml:"runstats>finished"`
-	Hoststats count_stats `xml:"runstats>hosts"`
+type xmlHosts struct {
+	Hosts     []xmlHost     `xml:"host"`
+	Runstats  finishedStats `xml:"runstats>finished"`
+	Hoststats countStats    `xml:"runstats>hosts"`
 }
 
-type xml_addr struct {
+type xmlAddr struct {
 	Addr string `xml:"addr,attr"`
 	Type string `xml:"addrtype,attr"`
 }
 
-type xml_name struct {
+type xmlName struct {
 	Name string `xml:"name,attr"`
 	Type string `xml:"type,attr"`
 }
 
-type xml_hostname struct {
-	Hostname []xml_name `xml:"hostname"`
+type xmlHostname struct {
+	Hostname []xmlName `xml:"hostname"`
 }
 
-type xml_host struct {
-	Hostnames xml_hostname `xml:"hostnames"`
-	Addrs []xml_addr `xml:"address"`
+type xmlHost struct {
+	Hostnames xmlHostname `xml:"hostnames"`
+	Addrs     []xmlAddr   `xml:"address"`
 }
 
-type Host struct {
+type host struct {
 	Hostname string
-	Ip string
-	Mac string
+	IP       string
+	Mac      string `json:",omitempty"`
 }
 
-func scan_hosts_on(subnet string, verbose bool) (error, io.Reader) {
+func scanHostsOnSubnet(subnet string, verbose bool) (io.Reader, error) {
 
 	var result *exec.Cmd
 
 	if verbose == true {
-		result = exec.Command("nmap", "-v", "-sP", subnet, "-oX", "-")
+		result = exec.Command("nmap", "-v", "-sn", subnet, "-oX", "-")
 	} else {
-		result = exec.Command("nmap", "-sP", subnet, "-oX", "-")
+		result = exec.Command("nmap", "-sn", subnet, "-oX", "-")
 	}
 
 	out, err := result.Output()
 
 	if err != nil {
-		return fmt.Errorf("Execute failed, is nmap installed?"), nil
+		return nil, fmt.Errorf("Execute failed, is nmap installed?")
 	}
 
-	return nil, bytes.NewReader(out)
+	return bytes.NewReader(out), nil
 }
 
-func parse_xml(reader io.Reader) (err error, hosts []Host) {
-	output := xml_hosts{}
+func parseXML(reader io.Reader) (hosts []host, err error) {
+	output := xmlHosts{}
 
 	decoder := xml.NewDecoder(reader)
-	dec_err := decoder.Decode(&output)
-	if dec_err != nil {
-		fmt.Errorf("Decode error")
-		fmt.Errorf("Error: " + dec_err.Error())
-		return dec_err, hosts
+	decErr := decoder.Decode(&output)
+	if decErr != nil {
+		fmt.Println("Decode error")
+		fmt.Println("Error: " + decErr.Error())
+		return hosts, decErr
 	}
 
-	for _,x_host  := range output.Hosts {
-		h := Host{}
-		for _,x_addr := range x_host.Addrs {
+	for _, xHost := range output.Hosts {
+		h := host{}
+		for _, xAddr := range xHost.Addrs {
 			switch {
-			case x_addr.Type == "ipv4":
-				h.Ip = x_addr.Addr
-			case x_addr.Type == "mac":
-				h.Mac = x_addr.Addr
+			case xAddr.Type == "ipv4":
+				h.IP = xAddr.Addr
+			case xAddr.Type == "mac":
+				h.Mac = xAddr.Addr
 			}
 
-			if len(x_host.Hostnames.Hostname) > 0 {
-				h.Hostname = x_host.Hostnames.Hostname[0].Name
+			if len(xHost.Hostnames.Hostname) > 0 {
+				h.Hostname = xHost.Hostnames.Hostname[0].Name
 			}
 		}
 
-		if h.Ip != "" {
+		if h.IP != "" {
 			if h.Hostname == "" {
 				h.Hostname = "unknown"
 			}
 
-			hosts = append(hosts,h)
+			hosts = append(hosts, h)
 		}
 	}
 
 	return
 }
 
-func print_usage() {
+func printUsage() {
 	fmt.Println("Usage:")
 	fmt.Println(os.Args[0] + " [-h -help] [-b -bare] <subnet>")
 	fmt.Println("-h -help	Print this usage text")
 	fmt.Println("-b -bare	Output bare insead of JSON format")
-	fmt.Println("NOTE: MAC addresses will only be returned if run as privileges user")
+	fmt.Println("NOTE: MAC addresses will only be returned if run as privileged user")
 }
 
 func main() {
 
 	help := flag.Bool("help", false, "Print the help text")
-	helpShort := flag.Bool("h", false, "Print ths help text" + " (shorthand)")
+	helpShort := flag.Bool("h", false, "Print ths help text"+" (shorthand)")
 
 	verbose := flag.Bool("verbose", false, "Verbose output, for debugging")
-	verboseShort := flag.Bool("v", false, "Verbose output, for debugging" + " (shorthand)")
+	verboseShort := flag.Bool("v", false, "Verbose output, for debugging"+" (shorthand)")
 
 	bare := flag.Bool("bare", false, "Output the bare text strings for display")
-	bareShort := flag.Bool("b", false, "Output the bare text strings for display" + "(shorthand)")
+	bareShort := flag.Bool("b", false, "Output the bare text strings for display"+"(shorthand)")
 
 	flag.Parse()
 
@@ -139,7 +139,7 @@ func main() {
 	var subnet string
 
 	if len(args) < 1 {
-		print_usage()
+		printUsage()
 		os.Exit(1)
 	} else {
 		subnet = args[0]
@@ -152,11 +152,11 @@ func main() {
 
 	if *help == true || *helpShort == true {
 		fmt.Println("Help")
-		print_usage()
+		printUsage()
 		os.Exit(0)
 	}
 
-	ip,net,err := net.ParseCIDR(subnet)
+	_, net, err := net.ParseCIDR(subnet)
 	if err != nil {
 		fmt.Println("You have not input a valid CIDR notation subnet. Try again.")
 		fmt.Println("Error: " + err.Error())
@@ -164,18 +164,17 @@ func main() {
 	}
 
 	if *verbose == true || *verboseShort == true {
-		fmt.Sprintf("IP : %v", ip)
-		fmt.Sprintf("NET: %v", net)
+		fmt.Printf("Network : %v\n", net)
 	}
 
-	err, reader := scan_hosts_on(subnet, *verbose)
+	reader, err := scanHostsOnSubnet(subnet, *verbose)
 	if err != nil {
 		fmt.Println("Host scan failed.")
 		fmt.Println("Error: " + err.Error())
 		os.Exit(4)
 	}
 
-	err, hosts := parse_xml(reader)
+	hosts, err := parseXML(reader)
 	if err != nil {
 		fmt.Println("Parsing failed. Bye")
 		fmt.Println("Error: " + err.Error())
@@ -183,9 +182,9 @@ func main() {
 	}
 
 	if *bare == true || *bareShort == true {
-		for index,host := range hosts {
+		for index, host := range hosts {
 			fmt.Println(host.Hostname)
-			fmt.Println(host.Ip)
+			fmt.Println(host.IP)
 			if host.Mac != "" {
 				fmt.Println(host.Mac)
 			}
